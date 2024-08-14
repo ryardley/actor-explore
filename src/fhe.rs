@@ -76,41 +76,42 @@ fn deserialize_to_box_i64(bytes: Vec<u8>) -> Option<Box<[i64]>> {
 /// Underlying internal types and errors should not be leaked. We should aim to maintain a simple
 /// API in line with our needs not the underlying library and what this does should be pretty
 /// lightweight
-pub struct Fhe {
+#[derive(Clone)]
+pub struct Fhe<R:Rng> {
     params: Arc<BfvParameters>,
     crp: CommonRandomPoly,
+    rng: Arc<Mutex<R>>
 }
 
-impl Fhe {
-    pub fn new<R: Rng>(
+impl<R:Rng> Fhe<R> {
+    pub fn new(
         rng: Arc<Mutex<R>>,
         moduli: Vec<u64>,
         degree: usize,
         plaintext_modulus: u64,
-    ) -> Result<Fhe> {
+    ) -> Result<Fhe<R>> {
         let params = BfvParametersBuilder::new()
             .set_degree(degree)
             .set_plaintext_modulus(plaintext_modulus)
             .set_moduli(&moduli)
             .build_arc()?;
         let crp = CommonRandomPoly::new(&params, &mut *rng.lock().unwrap())?;
-        Ok(Fhe { params, crp })
+        Ok(Fhe { params, crp, rng })
     }
 
     pub fn get_params(&self) -> (&Arc<BfvParameters>, &CommonRandomPoly) {
         (&self.params, &self.crp)
     }
 
-    pub fn generate_keyshare<R: Rng>(
+    pub fn generate_keyshare(
         &self,
-        rng: Arc<Mutex<R>>,
     ) -> Result<(SecretKey, PublicKeyShare)> {
         let sk_share = {
-            let mut r1 = rng.lock().unwrap();
+            let mut r1 = self.rng.lock().unwrap();
             FheRsSecretKey::random(&self.params, &mut *r1)
         };
         let pk_share = {
-            let mut r2 = rng.lock().unwrap();
+            let mut r2 = self.rng.lock().unwrap();
             FheRsPublicKeyShare::new(&sk_share, self.crp.clone(), &mut *r2)?
         };
         Ok((SecretKey(sk_share), PublicKeyShare(pk_share)))

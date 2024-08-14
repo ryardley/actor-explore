@@ -2,6 +2,7 @@ use crate::{
     actor_traits::{Actor, ActorSender},
     event::EnclaveEvent,
     event_dispatcher::EventDispatcher,
+    fhe::{Fhe, Rng},
     run_actor,
     store::Store,
 };
@@ -17,12 +18,13 @@ pub struct Ciphernode {
 }
 
 impl Ciphernode {
-    pub fn new<E, S>(dispatcher: E, store: S) -> Self
+    pub fn new<E, S, R>(dispatcher: E, store: S, fhe: Fhe<R>) -> Self
     where
         S: Store,
         E: EventDispatcher<EnclaveEvent>,
+        R: Rng + Send + 'static,
     {
-        let actor = CiphernodeActor::new(dispatcher, store);
+        let actor = CiphernodeActor::new(dispatcher, store, fhe);
         let sender = run_actor(actor, 8);
         Ciphernode { sender }
     }
@@ -35,18 +37,24 @@ impl ActorSender<EnclaveEvent> for Ciphernode {
     }
 }
 
-struct CiphernodeActor<S: Store, E: EventDispatcher<EnclaveEvent>> {
+struct CiphernodeActor<S: Store, E: EventDispatcher<EnclaveEvent>, R: Rng> {
     dispatcher: E,
     store: S,
+    fhe: Fhe<R>,
 }
 
-impl<S, E> CiphernodeActor<S, E>
+impl<S, E, R> CiphernodeActor<S, E, R>
 where
     S: Store,
     E: EventDispatcher<EnclaveEvent>,
+    R: Rng,
 {
-    pub fn new(dispatcher: E, store: S) -> Self {
-        Self { dispatcher, store }
+    pub fn new(dispatcher: E, store: S, fhe: Fhe<R>) -> Self {
+        Self {
+            dispatcher,
+            store,
+            fhe,
+        }
     }
 
     async fn on_computation_requested(&mut self, e3_id: &str) -> Result<()> {
@@ -63,10 +71,11 @@ where
 }
 
 #[async_trait]
-impl<S, E> Actor<EnclaveEvent> for CiphernodeActor<S, E>
+impl<S, E, R> Actor<EnclaveEvent> for CiphernodeActor<S, E, R>
 where
     S: Store,
     E: EventDispatcher<EnclaveEvent>,
+    R: Rng + Send + 'static
 {
     async fn handle_message(&mut self, msg: EnclaveEvent) -> Result<()> {
         match msg {
