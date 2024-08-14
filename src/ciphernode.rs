@@ -1,5 +1,6 @@
 use crate::{
     actor_traits::{Actor, ActorSender},
+    encryptor::{Encryptor, Plaintext},
     event::EnclaveEvent,
     event_dispatcher::EventDispatcher,
     fhe::{Fhe, Rng},
@@ -18,13 +19,14 @@ pub struct Ciphernode {
 }
 
 impl Ciphernode {
-    pub fn new<E, S, R>(dispatcher: E, store: S, fhe: Fhe<R>) -> Self
+    pub fn new<D, S, R, E>(dispatcher: D, store: S, fhe: Fhe<R>, encryptor: E) -> Self
     where
         S: Store,
-        E: EventDispatcher<EnclaveEvent>,
+        D: EventDispatcher<EnclaveEvent>,
         R: Rng + Send + 'static,
+        E: Encryptor + Send + 'static,
     {
-        let actor = CiphernodeActor::new(dispatcher, store, fhe);
+        let actor = CiphernodeActor::new(dispatcher, store, fhe, encryptor);
         let sender = run_actor(actor, 8);
         Ciphernode { sender }
     }
@@ -37,33 +39,41 @@ impl ActorSender<EnclaveEvent> for Ciphernode {
     }
 }
 
-struct CiphernodeActor<S: Store, E: EventDispatcher<EnclaveEvent>, R: Rng> {
-    dispatcher: E,
+struct CiphernodeActor<S: Store, D: EventDispatcher<EnclaveEvent>, R: Rng, E: Encryptor> {
+    dispatcher: D,
     store: S,
     fhe: Fhe<R>,
+    encryptor: E,
 }
 
-impl<S, E, R> CiphernodeActor<S, E, R>
+impl<S, D, R, E> CiphernodeActor<S, D, R, E>
 where
     S: Store,
-    E: EventDispatcher<EnclaveEvent>,
+    D: EventDispatcher<EnclaveEvent>,
     R: Rng,
+    E: Encryptor,
 {
-    pub fn new(dispatcher: E, store: S, fhe: Fhe<R>) -> Self {
+    pub fn new(dispatcher: D, store: S, fhe: Fhe<R>, encryptor: E) -> Self {
         Self {
             dispatcher,
             store,
             fhe,
+            encryptor,
         }
     }
 
     async fn on_computation_requested(&mut self, e3_id: &str) -> Result<()> {
-        self.store.insert(vec![123, 12]);
+        let (sk, pk) = self.fhe.generate_keyshare()?;
+        let e_sk = self.encryptor.encrypt(Plaintext::new(sk.into())).await?;
+        
+        self.store.insert(format!("{}/sk",e3_id), e_sk);
+        self.store.insert(format!("{}/pk",e3_id), pk.clone());
+        
         let _ = self
             .dispatcher
             .send(EnclaveEvent::KeyshareCreated {
                 e3_id: e3_id.to_string(),
-                keyshare: "Hello World".to_string(),
+                keyshare: pk,
             })
             .await;
         Ok(())
@@ -71,11 +81,12 @@ where
 }
 
 #[async_trait]
-impl<S, E, R> Actor<EnclaveEvent> for CiphernodeActor<S, E, R>
+impl<S, D, R, E> Actor<EnclaveEvent> for CiphernodeActor<S, D, R, E>
 where
     S: Store,
-    E: EventDispatcher<EnclaveEvent>,
-    R: Rng + Send + 'static
+    D: EventDispatcher<EnclaveEvent>,
+    R: Rng + Send + 'static,
+    E: Encryptor + Send + 'static,
 {
     async fn handle_message(&mut self, msg: EnclaveEvent) -> Result<()> {
         match msg {

@@ -1,4 +1,4 @@
-use crate::event_dispatcher::Listener;
+use crate::{event_dispatcher::Listener, fhe::PublicKeyShare};
 
 // type Error = Box<dyn std::error::Error>;
 // type Result<T> = std::result::Result<T, Error>;
@@ -18,6 +18,6 @@ pub enum EnclaveEvent {
     },
     KeyshareCreated {
         e3_id: String,
-        keyshare: String,
+        keyshare: PublicKeyShare,
     },
 }

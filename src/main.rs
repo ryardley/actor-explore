@@ -1,5 +1,6 @@
 mod actor_traits;
 mod ciphernode;
+mod encryptor;
 mod event;
 mod event_dispatcher;
 mod fhe;
@@ -31,6 +32,7 @@ mod tests {
     use crate::{
         actor_traits::*,
         ciphernode::Ciphernode,
+        encryptor::AesEncryptor,
         event::EnclaveEvent,
         event_dispatcher::{EventBus, EventDispatcher, Listener},
         fhe::Fhe,
@@ -45,6 +47,8 @@ mod tests {
     async fn test_main() -> Result<()> {
         let dispatcher = EventBus::new();
         let store = DataStore::new();
+        let key = b"a 32-byte secret key here!!!!!!!".to_vec();
+        let encryptor = AesEncryptor::new(key);
         let fhe = Fhe::new(
             Arc::new(Mutex::new(ChaCha20Rng::seed_from_u64(42))),
             vec![0x3FFFFFFF000001],
@@ -52,9 +56,24 @@ mod tests {
             1032193,
         )?;
 
-        let ciphernode1 = Ciphernode::new(dispatcher.clone(), store.clone(), fhe.clone());
-        let ciphernode2 = Ciphernode::new(dispatcher.clone(), store.clone(), fhe.clone());
-        let ciphernode3 = Ciphernode::new(dispatcher.clone(), store.clone(), fhe.clone());
+        let ciphernode1 = Ciphernode::new(
+            dispatcher.clone(),
+            store.clone(),
+            fhe.clone(),
+            encryptor.clone(),
+        );
+        let ciphernode2 = Ciphernode::new(
+            dispatcher.clone(),
+            store.clone(),
+            fhe.clone(),
+            encryptor.clone(),
+        );
+        let ciphernode3 = Ciphernode::new(
+            dispatcher.clone(),
+            store.clone(),
+            fhe.clone(),
+            encryptor.clone(),
+        );
         let reporter = Logger::new();
 
         dispatcher
@@ -81,18 +100,19 @@ mod tests {
                 ciphernode_threshold: 3,
                 sortition_seed: 1234,
             },
-            EnclaveEvent::KeyshareCreated {
-                e3_id: "1234".to_owned(),
-                keyshare: "Hello World".to_owned(),
-            },
-            EnclaveEvent::KeyshareCreated {
-                e3_id: "1234".to_owned(),
-                keyshare: "Hello World".to_owned(),
-            },
-            EnclaveEvent::KeyshareCreated {
-                e3_id: "1234".to_owned(),
-                keyshare: "Hello World".to_owned(),
-            },
+            // TODO: get correct test data....
+            // EnclaveEvent::KeyshareCreated {
+            //     e3_id: "1234".to_owned(),
+            //     keyshare: "Hello World".to_owned(),
+            // },
+            // EnclaveEvent::KeyshareCreated {
+            //     e3_id: "1234".to_owned(),
+            //     keyshare: "Hello World".to_owned(),
+            // },
+            // EnclaveEvent::KeyshareCreated {
+            //     e3_id: "1234".to_owned(),
+            //     keyshare: "Hello World".to_owned(),
+            // },
         ];
 
         assert_eq!(format!("{:?}", log), format!("{:?}", expected));

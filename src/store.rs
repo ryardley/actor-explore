@@ -8,7 +8,7 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum StoreEvent {
-    Insert(Vec<u8>),
+    Insert { key: Vec<u8>, value: Vec<u8> },
 }
 
 #[derive(Debug, Clone)]
@@ -17,7 +17,7 @@ pub struct DataStore {
 }
 
 pub trait Store: Send + 'static {
-    fn insert(&self, data: impl Into<Vec<u8>>);
+    fn insert(&self, key: impl Into<Vec<u8>>, data: impl Into<Vec<u8>>);
 }
 
 impl DataStore {
@@ -28,8 +28,11 @@ impl DataStore {
     }
 }
 impl Store for DataStore {
-    fn insert(&self, data: impl Into<Vec<u8>>) {
-        let _ = self.sender.send(StoreEvent::Insert(data.into()));
+    fn insert(&self, key: impl Into<Vec<u8>>, data: impl Into<Vec<u8>>) {
+        let _ = self.sender.send(StoreEvent::Insert {
+            key: key.into(),
+            value: data.into(),
+        });
     }
 }
 
@@ -45,7 +48,7 @@ impl StoreActor {
 impl Actor<StoreEvent> for StoreActor {
     async fn handle_message(&mut self, msg: StoreEvent) -> Result<()> {
         match msg {
-            StoreEvent::Insert(_) => (),
+            StoreEvent::Insert { .. } => (),
         }
         Ok(())
     }
