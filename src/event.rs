@@ -18,6 +18,6 @@ pub enum EnclaveEvent {
     },
     KeyshareCreated {
         e3_id: String,
-        keyshare: String
-    }
+        keyshare: String,
+    },
 }
