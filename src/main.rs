@@ -66,6 +66,7 @@ mod tests {
         let dispatcher = EventDispatcher::new();
         let ciphernode1 = Ciphernode::new(dispatcher.clone());
         let ciphernode2 = Ciphernode::new(dispatcher.clone());
+        let ciphernode3 = Ciphernode::new(dispatcher.clone());
         let reporter = Logger::new();
 
         dispatcher
@@ -73,6 +74,7 @@ mod tests {
             .await;
         dispatcher.register(Listener::Ciphernode(ciphernode1)).await;
         dispatcher.register(Listener::Ciphernode(ciphernode2)).await;
+        dispatcher.register(Listener::Ciphernode(ciphernode3)).await;
         dispatcher
             .send(EnclaveEvent::ComputationRequested {
                 e3_id: "1234".to_string(),
@@ -99,10 +101,14 @@ mod tests {
                 e3_id: "1234".to_owned(),
                 keyshare: "Hello World".to_owned(),
             },
+            EnclaveEvent::KeyshareCreated {
+                e3_id: "1234".to_owned(),
+                keyshare: "Hello World".to_owned(),
+            },
         ];
-        assert_eq!(format!("{:?}",log), format!("{:?}", expected));
 
-    
+        assert_eq!(format!("{:?}", log), format!("{:?}", expected));
+
         Ok(())
     }
 }

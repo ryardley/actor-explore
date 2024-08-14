@@ -42,6 +42,17 @@ impl CiphernodeActor {
             dispatcher,
         }
     }
+
+    async fn on_computation_requested(&mut self, e3_id: &str) -> Result<()> {
+        let _ = self
+            .dispatcher
+            .send(EnclaveEvent::KeyshareCreated {
+                e3_id: e3_id.to_string(),
+                keyshare: "Hello World".to_string(),
+            })
+            .await;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -49,16 +60,7 @@ impl Actor<EnclaveEvent> for CiphernodeActor {
     async fn handle_message(&mut self, msg: EnclaveEvent) -> Result<()> {
         match msg {
             EnclaveEvent::ComputationRequested { e3_id, .. } => {
-                async {
-                    let _ = self
-                        .dispatcher
-                        .send(EnclaveEvent::KeyshareCreated {
-                            e3_id: e3_id.clone(),
-                            keyshare: "Hello World".to_string(),
-                        })
-                        .await;
-                }
-                .await
+                self.on_computation_requested(&e3_id).await?
             }
             _ => (),
         }
