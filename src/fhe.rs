@@ -14,8 +14,8 @@ pub type Error = Box<dyn std::error::Error>;
 pub type Result<T> = std::result::Result<T, Error>;
 
 // Define a trait for Rng which we use below
-pub trait Rng: RngCore + CryptoRng {}
-impl<T: RngCore + CryptoRng> Rng for T {}
+pub trait Rng: RngCore + CryptoRng + Send + 'static {}
+impl<T: RngCore + CryptoRng + Send + 'static> Rng for T {}
 
 /// Wrapped PublicKeyShare. This is wrapped to provide an inflection point
 /// as we use this library elsewhere we only implement traits as we need them
@@ -77,13 +77,13 @@ fn deserialize_to_box_i64(bytes: Vec<u8>) -> Option<Box<[i64]>> {
 /// API in line with our needs not the underlying library and what this does should be pretty
 /// lightweight
 #[derive(Clone)]
-pub struct Fhe<R:Rng> {
+pub struct Fhe<R: Rng> {
     params: Arc<BfvParameters>,
     crp: CommonRandomPoly,
-    rng: Arc<Mutex<R>>
+    rng: Arc<Mutex<R>>,
 }
 
-impl<R:Rng> Fhe<R> {
+impl<R: Rng> Fhe<R> {
     pub fn new(
         rng: Arc<Mutex<R>>,
         moduli: Vec<u64>,
@@ -103,9 +103,7 @@ impl<R:Rng> Fhe<R> {
         (&self.params, &self.crp)
     }
 
-    pub fn generate_keyshare(
-        &self,
-    ) -> Result<(SecretKey, PublicKeyShare)> {
+    pub fn generate_keyshare(&self) -> Result<(SecretKey, PublicKeyShare)> {
         let sk_share = {
             let mut r1 = self.rng.lock().unwrap();
             FheRsSecretKey::random(&self.params, &mut *r1)

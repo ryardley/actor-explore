@@ -1,4 +1,4 @@
-use std::fmt::{self, Debug};
+use std::fmt::Debug;
 
 use aes_gcm::{
     aead::{Aead, KeyInit, OsRng},
@@ -41,7 +41,7 @@ pub enum EncryptorMessage {
 }
 
 #[async_trait]
-pub trait Encryptor {
+pub trait Encryptor: Send + 'static {
     async fn encrypt(&self, plaintext: Plaintext) -> Result<Vec<u8>>;
 }
 

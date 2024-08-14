@@ -23,8 +23,8 @@ impl Ciphernode {
     where
         S: Store,
         D: EventDispatcher<EnclaveEvent>,
-        R: Rng + Send + 'static,
-        E: Encryptor + Send + 'static,
+        R: Rng,
+        E: Encryptor,
     {
         let actor = CiphernodeActor::new(dispatcher, store, fhe, encryptor);
         let sender = run_actor(actor, 8);
@@ -85,8 +85,8 @@ impl<S, D, R, E> Actor<EnclaveEvent> for CiphernodeActor<S, D, R, E>
 where
     S: Store,
     D: EventDispatcher<EnclaveEvent>,
-    R: Rng + Send + 'static,
-    E: Encryptor + Send + 'static,
+    R: Rng,
+    E: Encryptor,
 {
     async fn handle_message(&mut self, msg: EnclaveEvent) -> Result<()> {
         match msg {

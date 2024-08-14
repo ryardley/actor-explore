@@ -1,6 +1,5 @@
-
 use async_trait::async_trait;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, Receiver};
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
@@ -23,18 +22,23 @@ pub trait ActorSender<M> {
 pub fn run_actor<A, M>(actor: A, buffer: usize) -> mpsc::Sender<M>
 where
     A: Actor<M>,
-    M: Send + 'static,
+    M: Send + 'static
 {
-    let (sender, mut receiver) = mpsc::channel(buffer);
+    let (sender, receiver) = mpsc::channel(buffer);
 
-    tokio::spawn(async move {
-        let mut actor = actor;
-        while let Some(msg) = receiver.recv().await {
-            if let Err(e) = actor.handle_message(msg).await {
-                eprintln!("Error handling message: {:?}", e);
-            }
-        }
-    });
+    tokio::spawn(consume_actor(actor, receiver));
 
     sender
+}
+
+async fn consume_actor<A, M>(mut actor: A, mut receiver: Receiver<M>)
+where
+    A: Actor<M>,
+    M: Send + 'static,
+{
+    while let Some(msg) = receiver.recv().await {
+        if let Err(e) = actor.handle_message(msg).await {
+            eprintln!("Error handling message: {:?}", e);
+        }
+    }
 }
