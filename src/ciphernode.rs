@@ -1,43 +1,44 @@
-use std::sync::Arc;
-
 use crate::{
-    actor_traits::{Actor, ActorHandle, ActorRunner, ActorSender},
-    event::EnclaveEvent,
-    event_dispatcher::EventDispatcher,
+    actor_traits::{Actor, ActorSender}, event::EnclaveEvent, event_dispatcher::EventDispatcher, run_actor, store::Store
 };
 use async_trait::*;
+use tokio::sync::mpsc;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug,Clone)]
-pub struct Ciphernode(Arc<ActorHandle<EnclaveEvent>>);
+#[derive(Debug, Clone)]
+pub struct Ciphernode {
+    sender: mpsc::Sender<EnclaveEvent>,
+}
 
 impl Ciphernode {
-    pub fn new(dispatcher: EventDispatcher) -> Self {
-        let actor = CiphernodeActor::new(dispatcher);
-        let runner = ActorRunner::new(actor, 8);
-        Ciphernode(Arc::new(runner.handle()))
+    pub fn new<S: Store, E: EventDispatcher<EnclaveEvent>>(dispatcher: E, store: S) -> Self {
+        let actor = CiphernodeActor::new(dispatcher, store);
+        let sender = run_actor(actor, 8);
+        Ciphernode { sender }
     }
 }
+
 #[async_trait]
 impl ActorSender<EnclaveEvent> for Ciphernode {
     async fn send(&self, msg: EnclaveEvent) -> Result<()> {
-        Ok(self.0.send(msg).await?)
+        Ok(self.sender.send(msg).await?)
     }
 }
-struct CiphernodeActor {
-    dispatcher: EventDispatcher,
+
+struct CiphernodeActor<S: Store, E: EventDispatcher<EnclaveEvent>> {
+    dispatcher: E,
+    store: S,
 }
 
-impl CiphernodeActor {
-    pub fn new(dispatcher: EventDispatcher) -> Self {
-        Self {
-            dispatcher,
-        }
+impl<S: Store, E: EventDispatcher<EnclaveEvent>> CiphernodeActor<S, E> {
+    pub fn new(dispatcher: E, store: S) -> Self {
+        Self { dispatcher, store }
     }
 
     async fn on_computation_requested(&mut self, e3_id: &str) -> Result<()> {
+        self.store.insert(vec![123, 12]);
         let _ = self
             .dispatcher
             .send(EnclaveEvent::KeyshareCreated {
@@ -50,7 +51,7 @@ impl CiphernodeActor {
 }
 
 #[async_trait]
-impl Actor<EnclaveEvent> for CiphernodeActor {
+impl<S: Store, E: EventDispatcher<EnclaveEvent>> Actor<EnclaveEvent> for CiphernodeActor<S, E> {
     async fn handle_message(&mut self, msg: EnclaveEvent) -> Result<()> {
         match msg {
             EnclaveEvent::ComputationRequested { e3_id, .. } => {

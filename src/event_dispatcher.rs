@@ -1,10 +1,11 @@
 use crate::{
-    actor_traits::{Actor, ActorHandle, ActorRunner, ActorSender},
+    actor_traits::{run_actor, Actor, ActorSender},
     ciphernode::Ciphernode,
     event::EnclaveEvent,
     logger::Logger,
 };
 use async_trait::*;
+use tokio::sync::mpsc;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
@@ -25,33 +26,43 @@ impl ActorSender<EnclaveEvent> for Listener {
     }
 }
 
+#[async_trait]
+pub trait EventDispatcher<E>: ActorSender<E> + Send + 'static {
+    async fn register(&self, listener: Listener);
+}
+
 #[derive(Debug, Clone)]
-pub struct EventDispatcher(ActorHandle<EnclaveEvent>);
+pub struct EventBus {
+    sender: mpsc::Sender<EnclaveEvent>,
+}
 
-impl EventDispatcher {
+impl EventBus {
     pub fn new() -> Self {
-        let actor = EventDispatcherActor::new();
-        let runner = ActorRunner::new(actor, 8);
-        EventDispatcher(runner.handle())
-    }
-
-    pub async fn register(&self, listener: Listener) {
-        let _ = self.0.send(EnclaveEvent::RegisterListener(listener)).await;
+        let actor = EventBusActor::new();
+        let sender = run_actor(actor, 8);
+        EventBus { sender }
     }
 }
 
 #[async_trait]
-impl ActorSender<EnclaveEvent> for EventDispatcher {
-    async fn send(&self, msg: EnclaveEvent) -> Result<()> {
-        Ok(self.0.send(msg).await?)
+impl EventDispatcher<EnclaveEvent> for EventBus {
+    async fn register(&self, listener: Listener) {
+        let _ = self.send(EnclaveEvent::RegisterListener(listener)).await;
     }
 }
 
-struct EventDispatcherActor {
+#[async_trait]
+impl ActorSender<EnclaveEvent> for EventBus {
+    async fn send(&self, msg: EnclaveEvent) -> Result<()> {
+        Ok(self.sender.send(msg).await?)
+    }
+}
+
+struct EventBusActor {
     listeners: Vec<Listener>,
 }
 
-impl EventDispatcherActor {
+impl EventBusActor {
     pub fn new() -> Self {
         Self { listeners: vec![] }
     }
@@ -65,7 +76,7 @@ impl EventDispatcherActor {
 }
 
 #[async_trait]
-impl Actor<EnclaveEvent> for EventDispatcherActor {
+impl Actor<EnclaveEvent> for EventBusActor {
     async fn handle_message(&mut self, msg: EnclaveEvent) -> Result<()> {
         match msg {
             EnclaveEvent::RegisterListener(listener) => self.listeners.push(listener),

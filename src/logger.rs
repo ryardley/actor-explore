@@ -1,8 +1,5 @@
-
-use std::sync::Arc;
-
 use async_trait::async_trait;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::{actor_traits::*, event::EnclaveEvent};
 
@@ -15,18 +12,20 @@ pub enum LogEvent {
     GetLog(oneshot::Sender<Vec<EnclaveEvent>>),
 }
 
-#[derive(Debug,Clone)]
-pub struct Logger(Arc<ActorHandle<LogEvent>>);
+#[derive(Debug, Clone)]
+pub struct Logger {
+    sender: mpsc::Sender<LogEvent>,
+}
 
 impl Logger {
     pub fn new() -> Self {
         let actor = LoggerActor::new();
-        let runner = ActorRunner::new(actor, 8);
-        Logger(Arc::new(runner.handle()))
+        let sender = run_actor(actor, 8);
+        Logger { sender }
     }
     pub async fn get_log(&self) -> Result<Vec<EnclaveEvent>> {
         let (send, recv) = oneshot::channel();
-        let _ = self.0.send(LogEvent::GetLog(send)).await;
+        let _ = self.sender.send(LogEvent::GetLog(send)).await;
         Ok(recv.await?)
     }
 }
@@ -34,7 +33,7 @@ impl Logger {
 #[async_trait]
 impl ActorSender<EnclaveEvent> for Logger {
     async fn send(&self, msg: EnclaveEvent) -> Result<()> {
-        Ok(self.0.send(LogEvent::Log(msg)).await?)
+        Ok(self.sender.send(LogEvent::Log(msg)).await?)
     }
 }
 
