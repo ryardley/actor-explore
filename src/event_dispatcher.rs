@@ -1,23 +1,22 @@
 use crate::{
-    actor_traits::{Actor, ActorHandle},
+    actor_traits::{Actor, ActorHandle, ActorRunner, ActorSender},
     ciphernode::Ciphernode,
     event::EnclaveEvent,
     logger::Logger,
 };
 use async_trait::*;
-use tokio::sync::mpsc;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub enum Listener {
     Ciphernode(Ciphernode),
     Reporter(Logger),
 }
 
 #[async_trait]
-impl ActorHandle<EnclaveEvent> for Listener {
+impl ActorSender<EnclaveEvent> for Listener {
     async fn send(&self, event: EnclaveEvent) -> Result<()> {
         Ok(match self {
             Listener::Ciphernode(c) => c.send(event).await?,
@@ -26,17 +25,35 @@ impl ActorHandle<EnclaveEvent> for Listener {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct EventDispatcher(ActorHandle<EnclaveEvent>);
+
+impl EventDispatcher {
+    pub fn new() -> Self {
+        let actor = EventDispatcherActor::new();
+        let runner = ActorRunner::new(actor, 8);
+        EventDispatcher(runner.handle())
+    }
+
+    pub async fn register(&self, listener: Listener) {
+        let _ = self.0.send(EnclaveEvent::RegisterListener(listener)).await;
+    }
+}
+
+#[async_trait]
+impl ActorSender<EnclaveEvent> for EventDispatcher {
+    async fn send(&self, msg: EnclaveEvent) -> Result<()> {
+        Ok(self.0.send(msg).await?)
+    }
+}
+
 struct EventDispatcherActor {
-    receiver: mpsc::Receiver<EnclaveEvent>,
     listeners: Vec<Listener>,
 }
 
 impl EventDispatcherActor {
-    pub fn new(receiver: mpsc::Receiver<EnclaveEvent>) -> Self {
-        Self {
-            receiver,
-            listeners: vec![],
-        }
+    pub fn new() -> Self {
+        Self { listeners: vec![] }
     }
 
     async fn dispatch(&self, event: EnclaveEvent) -> Result<()> {
@@ -57,35 +74,5 @@ impl Actor<EnclaveEvent> for EventDispatcherActor {
             }
         }
         Ok(())
-    }
-
-    async fn run(mut self) {
-        while let Some(msg) = self.receiver.recv().await {
-            self.handle_message(msg).await.unwrap()
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct EventDispatcher {
-    sender: mpsc::Sender<EnclaveEvent>,
-}
-
-impl EventDispatcher {
-    pub fn new() -> Self {
-        let (sender, receiver) = mpsc::channel(8);
-        tokio::spawn(EventDispatcherActor::new(receiver).run());
-        EventDispatcher { sender }
-    }
-
-    pub async fn register(&self, listener: Listener) {
-        let _ = self.send(EnclaveEvent::RegisterListener(listener)).await;
-    }
-}
-
-#[async_trait]
-impl ActorHandle<EnclaveEvent> for EventDispatcher {
-    async fn send(&self, event: EnclaveEvent) -> Result<()> {
-        Ok(self.sender.send(event).await?)
     }
 }

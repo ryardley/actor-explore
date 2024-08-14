@@ -1,7 +1,7 @@
-use tokio::sync::mpsc;
+use std::sync::Arc;
 
 use crate::{
-    actor_traits::{Actor, ActorHandle},
+    actor_traits::{Actor, ActorHandle, ActorRunner, ActorSender},
     event::EnclaveEvent,
     event_dispatcher::EventDispatcher,
 };
@@ -10,35 +10,29 @@ use async_trait::*;
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Clone, Debug)]
-pub struct Ciphernode {
-    sender: mpsc::Sender<EnclaveEvent>,
-}
+#[derive(Debug,Clone)]
+pub struct Ciphernode(Arc<ActorHandle<EnclaveEvent>>);
 
 impl Ciphernode {
     pub fn new(dispatcher: EventDispatcher) -> Self {
-        let (sender, receiver) = mpsc::channel(8);
-        tokio::spawn(CiphernodeActor::new(receiver, dispatcher).run());
-        Ciphernode { sender }
+        let actor = CiphernodeActor::new(dispatcher);
+        let runner = ActorRunner::new(actor, 8);
+        Ciphernode(Arc::new(runner.handle()))
     }
 }
-
 #[async_trait]
-impl ActorHandle<EnclaveEvent> for Ciphernode {
-    async fn send(&self, event: EnclaveEvent) -> Result<()> {
-        Ok(self.sender.send(event).await?)
+impl ActorSender<EnclaveEvent> for Ciphernode {
+    async fn send(&self, msg: EnclaveEvent) -> Result<()> {
+        Ok(self.0.send(msg).await?)
     }
 }
-
 struct CiphernodeActor {
-    receiver: mpsc::Receiver<EnclaveEvent>,
     dispatcher: EventDispatcher,
 }
 
 impl CiphernodeActor {
-    pub fn new(receiver: mpsc::Receiver<EnclaveEvent>, dispatcher: EventDispatcher) -> Self {
-        CiphernodeActor {
-            receiver,
+    pub fn new(dispatcher: EventDispatcher) -> Self {
+        Self {
             dispatcher,
         }
     }
@@ -65,10 +59,5 @@ impl Actor<EnclaveEvent> for CiphernodeActor {
             _ => (),
         }
         Ok(())
-    }
-    async fn run(mut self) {
-        while let Some(msg) = self.receiver.recv().await {
-            self.handle_message(msg).await.unwrap()
-        }
     }
 }
