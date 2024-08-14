@@ -1,5 +1,9 @@
 use crate::{
-    actor_traits::{Actor, ActorSender}, event::EnclaveEvent, event_dispatcher::EventDispatcher, run_actor, store::Store
+    actor_traits::{Actor, ActorSender},
+    event::EnclaveEvent,
+    event_dispatcher::EventDispatcher,
+    run_actor,
+    store::Store,
 };
 use async_trait::*;
 use tokio::sync::mpsc;
@@ -13,7 +17,11 @@ pub struct Ciphernode {
 }
 
 impl Ciphernode {
-    pub fn new<S: Store, E: EventDispatcher<EnclaveEvent>>(dispatcher: E, store: S) -> Self {
+    pub fn new<E, S>(dispatcher: E, store: S) -> Self
+    where
+        S: Store,
+        E: EventDispatcher<EnclaveEvent>,
+    {
         let actor = CiphernodeActor::new(dispatcher, store);
         let sender = run_actor(actor, 8);
         Ciphernode { sender }
@@ -32,7 +40,11 @@ struct CiphernodeActor<S: Store, E: EventDispatcher<EnclaveEvent>> {
     store: S,
 }
 
-impl<S: Store, E: EventDispatcher<EnclaveEvent>> CiphernodeActor<S, E> {
+impl<S, E> CiphernodeActor<S, E>
+where
+    S: Store,
+    E: EventDispatcher<EnclaveEvent>,
+{
     pub fn new(dispatcher: E, store: S) -> Self {
         Self { dispatcher, store }
     }
@@ -51,7 +63,11 @@ impl<S: Store, E: EventDispatcher<EnclaveEvent>> CiphernodeActor<S, E> {
 }
 
 #[async_trait]
-impl<S: Store, E: EventDispatcher<EnclaveEvent>> Actor<EnclaveEvent> for CiphernodeActor<S, E> {
+impl<S, E> Actor<EnclaveEvent> for CiphernodeActor<S, E>
+where
+    S: Store,
+    E: EventDispatcher<EnclaveEvent>,
+{
     async fn handle_message(&mut self, msg: EnclaveEvent) -> Result<()> {
         match msg {
             EnclaveEvent::ComputationRequested { e3_id, .. } => {
